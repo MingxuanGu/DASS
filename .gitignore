@@ -158,4 +158,8 @@ dmypy.json
 # profiling data
 .prof
 
+runs/
+Weixin Image_20230824165649.png
+Weixin Image_20230824170307.png
+
 # End of https://www.toptal.com/developers/gitignore/api/python,jupyternotebooks

@@ -16,8 +16,8 @@ def release_bn(net):
                 i.requires_grad = True
 
 def init_model_so(cfg):
-    model = Res_Deeplab(num_classes = cfg.num_classes).cuda()
-
+    # model = Res_Deeplab(num_classes = cfg.num_classes).cuda()
+    model = ResPair_Deeplab(num_classes=cfg.num_classes).cuda()
     if cfg.fixbn:
         freeze_bn(model)
     else:
@@ -63,21 +63,25 @@ def init_model_so(cfg):
     return model
 
 def init_model(cfg):
-
+    """
+    initialize the model based on the model
+    @param cfg: the config file
+    @return: the model
+    """
     model = ResPair_Deeplab(num_classes=cfg.num_classes, cfg=cfg).cuda()
     if cfg.fixbn:
         freeze_bn(model)
     else:
         release_bn(model)
 
-    if cfg.model=='deeplab' and cfg.init_weight != 'None':
+    if cfg.model == 'deeplab' and cfg.init_weight != 'None':
         params = torch.load(cfg.init_weight)
         print('Model restored with weights from : {}'.format(cfg.init_weight))
-        if 'init' in cfg.init_weight and cfg.model=='deeplab':
+        if 'init' in cfg.init_weight and cfg.model == 'deeplab':
             new_params = model.state_dict().copy()
             for i in params:
                 i_parts = i.split('.')
-                if not i_parts[1] == 'layer5':
+                if not i_parts[1] == 'layer5':  # load the weights except the layer5
                     new_params['.'.join(i_parts[1:])] = params[i]
             model.load_state_dict(new_params, strict=True)
 

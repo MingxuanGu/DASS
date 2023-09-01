@@ -1,10 +1,13 @@
 import torch.nn as nn
 import numpy as np
 import math
-affine_par = True
 import torch
 import torch.nn.functional as F
-#from torch.cuda.amp import autocast
+
+affine_par = True
+
+
+# from torch.cuda.amp import autocast
 
 def outS(i):
     i = int(i)
@@ -13,10 +16,12 @@ def outS(i):
     i = (i + 1) / 2
     return i
 
+
 def conv3x3(in_planes, out_planes, stride=1):
     "3x3 convolution with padding"
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
                      padding=1, bias=False)
+
 
 class BasicBlock(nn.Module):
     expansion = 1
@@ -48,6 +53,7 @@ class BasicBlock(nn.Module):
         out = self.relu(out)
 
         return out
+
 
 class Bottleneck(nn.Module):
     expansion = 4
@@ -95,13 +101,15 @@ class Bottleneck(nn.Module):
 
         return out
 
+
 class Classifier_Module(nn.Module):
     def __init__(self, inplanes, dilation_series, padding_series, num_classes):
         super(Classifier_Module, self).__init__()
         self.conv2d_list = nn.ModuleList()
         for dilation, padding in zip(dilation_series, padding_series):
             self.conv2d_list.append(
-                nn.Conv2d(inplanes, num_classes, kernel_size=3, stride=1, padding=padding, dilation=dilation, bias=True))
+                nn.Conv2d(inplanes, num_classes, kernel_size=3, stride=1, padding=padding, dilation=dilation,
+                          bias=True))
 
         for m in self.conv2d_list:
             m.weight.data.normal_(0, 0.01)
@@ -110,9 +118,10 @@ class Classifier_Module(nn.Module):
         out = self.conv2d_list[0](x)
         feature = self.conv2d_list[0](x)
         for i in range(len(self.conv2d_list) - 1):
-            feature = torch.cat((feature, self.conv2d_list[i + 1](x)), dim = 1)
+            feature = torch.cat((feature, self.conv2d_list[i + 1](x)), dim=1)
             out += self.conv2d_list[i + 1](x)
         return out, feature
+
 
 class ResNetPair5(nn.Module):
     def __init__(self, block, layers, num_classes, multiscale=False):
@@ -123,7 +132,7 @@ class ResNetPair5(nn.Module):
                                bias=False)
         self.bn1 = nn.BatchNorm2d(64, affine=affine_par)
         self.target_conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3,
-                               bias=False)
+                                      bias=False)
         self.target_bn1 = nn.BatchNorm2d(64, affine=affine_par)
 
         for i in self.bn1.parameters():
@@ -133,7 +142,7 @@ class ResNetPair5(nn.Module):
 
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1, ceil_mode=True)  # change
-        #self.layer1 = self._make_layer(block, 64, layers[0], first=False)
+        # self.layer1 = self._make_layer(block, 64, layers[0], first=False)
         self.layer1 = self._make_layer(block, 64, layers[0], first=True)
         self.target_layer1 = self._make_layer(block, 64, layers[0])
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
@@ -164,7 +173,7 @@ class ResNetPair5(nn.Module):
         if first:
             self.inplanes = 64
         return nn.Sequential(*layers)
-        #return SublinearSequential(*list(layers.children()))
+        # return SublinearSequential(*list(layers.children()))
 
     def _make_pred_layer(self, block, inplanes, dilation_series, padding_series, num_classes):
         return block(inplanes, dilation_series, padding_series, num_classes)
@@ -182,7 +191,7 @@ class ResNetPair5(nn.Module):
             x = self.target_bn1(x)
             x = self.relu(x)
             x = self.maxpool(x)
-            #x = self.layer1(x)
+            # x = self.layer1(x)
             x = self.target_layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
@@ -225,8 +234,10 @@ class ResNetPair5(nn.Module):
         else:
             lr = args.learning_rate
         return [{'params': self.get_1x_lr_params_NOscale(), 'lr': lr},
-               {'params': self.get_10x_lr_params(), 'lr':  10*lr}]
-               #{'params': self.get_10x_lr_params(), 'lr':  lr}]
+                {'params': self.get_10x_lr_params(), 'lr': 10 * lr}]
+        # {'params': self.get_10x_lr_params(), 'lr':  lr}]
+
+
 """
 class ResNetPair5(nn.Module):
     def __init__(self, block, layers, num_classes, multiscale=False):
@@ -323,6 +334,8 @@ class ResNetPair5(nn.Module):
                {'params': self.get_10x_lr_params(), 'lr':  10*lr}]
 #                {'params': self.get_10x_lr_params(), 'lr':  lr}]
 """
+
+
 def ResPair_Deeplab(num_classes=19, cfg=None):
     model = ResNetPair5(Bottleneck, [3, 4, 23, 3], num_classes, cfg)
     return model

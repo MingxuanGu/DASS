@@ -5,6 +5,12 @@ class AverageMeter(object):
     """Computes and stores the average and current value"""
 
     def __init__(self):
+        """
+        self.val: validation score
+        self.avg: the average value of the validation score = sum / count
+        self.sum: the summation of all the validation values
+        self.count: the number of validations. Will be increased by 1 each time the function "update()" is called.
+        """
         self.val = 0
         self.avg = 0
         self.sum = 0
@@ -22,7 +28,12 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count
 class GroupAverageMeter(object):
-    """Computes and stores the average and current value"""
+    """
+    Computes and stores the average and current value
+    Can be considered as a group of "AverageMeter" above, but with a dictionary.
+    each element in the dictionary should be {key, (value, count)}.
+    Among which "count can be seen as the weight factor for the value"
+    """
 
     def __init__(self):
         self.val = {}

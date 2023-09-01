@@ -2,11 +2,12 @@ from easydict import EasyDict as edict
 from yaml import load, dump
 import yaml
 from utils.flatwhite import *
-#from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 import torch
 import numpy as np
 import random
 import platform
+
 
 def easy_dic(dic):
     dic = edict(dic)
@@ -14,17 +15,26 @@ def easy_dic(dic):
         if isinstance(value, dict):
             dic[key] = edict(value)
     return dic
+
+
 def show_config(config, sub=False):
     msg = ''
     for key, value in config.items():
         if isinstance(value, dict):
             continue
-#            msg += show_config(value, sub=True)
-        else :
+        #            msg += show_config(value, sub=True)
+        else:
             msg += '{:>25} : {:<15}\n'.format(key, value)
     return msg
 
+
 def type_align(source, target):
+    """
+
+    @param source: the value in the dict
+    @param target: the value that need to be assigned to the dict
+    @return:
+    """
     if isinstance(source, int):
         return int(target)
     elif isinstance(source, float):
@@ -36,6 +46,7 @@ def type_align(source, target):
     else:
         print("Unsupported type: {}".format(type(source)))
 
+
 def config_parser(config, args):
     print(args)
     for arg in args:
@@ -43,16 +54,22 @@ def config_parser(config, args):
             continue
         else:
             key, value = arg.split('=')
-        value = type_align(config[key], value) 
+        value = type_align(config[key], value)
         config[key] = value
     return config
 
 
 def init_config(config_path, argvs):
+    """
+
+    @param config_path: The path to the configure file
+    @param argvs: the system arguments which will overwrite the values in the config dict
+    @return: the config(easydict), summarywriter(tensorboard)
+    """
     with open(config_path, 'r') as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
     f.close()
-    
+
     config = easy_dic(config)
     config = config_parser(config, argvs)
     config.snapshot = osp.join(config.snapshot, config.note)
@@ -61,7 +78,7 @@ def init_config(config_path, argvs):
     if config.tensorboard:
         config.tb = osp.join(config.log, config.note)
         mkdir(config.tb)
-        #writer = SummaryWriter(config.tb)
+        writer = SummaryWriter(config.tb)
     else:
         writer = None
     if config.fix_seed:
@@ -72,4 +89,3 @@ def init_config(config_path, argvs):
     message = show_config(config)
     print(message)
     return config, writer
-

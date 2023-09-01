@@ -7,7 +7,7 @@ import os.path as osp
 from dataset import dataset
 import  torch.optim as optim
 from tqdm import tqdm
-import neptune
+# import neptune
 import math
 from PIL import Image
 import copy
@@ -31,9 +31,9 @@ class Trainer(BaseTrainer):
         loss.backward()
 
     def train(self):
-        if self.config.neptune:
-            neptune.init(project_qualified_name="leegeon30/segmentation-DA")
-            neptune.create_experiment(params=self.config, name=self.config['note'])
+        # if self.config.neptune:
+        #     neptune.init(project_qualified_name="leegeon30/segmentation-DA")
+        #     neptune.create_experiment(params=self.config, name=self.config['note'])
 
         if self.config.multigpu:
             self.optim = optim.SGD(self.model.module.optim_parameters(self.config.learning_rate),
@@ -63,8 +63,8 @@ class Trainer(BaseTrainer):
                     best_miou = miou
                     self.save_model('best_source_only')
                 self.model = self.model.train()
-        if self.config.neptune:
-            neptune.stop()
+        # if self.config.neptune:
+        #     neptune.stop()
 
     def resume(self):
         self.tea = copy.deepcopy(self.model)
@@ -124,7 +124,7 @@ class Trainer(BaseTrainer):
             acc = inter/preds
             if self.config.source=='synthia':
                 iou = iou.squeeze()
-                cass13_iou = torch.cat((iou[:3], iou[6:9], iou[10:14], iou[15:16], iou[17:]))
+                class13_iou = torch.cat((iou[:3], iou[6:9], iou[10:14], iou[15:16], iou[17:]))
                 class13_miou = class13_iou.mean().item()
                 print('13-Class mIoU:{:.2%}'.format(class13_miou))
                 print(class13_iou)
@@ -133,9 +133,9 @@ class Trainer(BaseTrainer):
             mAcc = acc.mean().item()
             iou = iou.cpu().numpy()
             #print('mIoU: {:.2%} mAcc : {:.2%} '.format(mIoU, mAcc))
-            if self.config.neptune:
-                neptune.send_metric('mIoU', mIoU)
-                neptune.send_metric('mAcc', mAcc)
+            # if self.config.neptune:
+            #     neptune.send_metric('mIoU', mIoU)
+            #     neptune.send_metric('mAcc', mAcc)
         return class13_miou
 
     def print_loss(self, iter):
@@ -144,9 +144,9 @@ class Trainer(BaseTrainer):
         loss_infor = '  '.join(to_print)
         if self.config.screen:
             print(iter_infor +'  '+ loss_infor)
-        if self.config.neptune:
-            for key in self.losses.keys():
-                neptune.send_metric(key, self.losses[key].item())
+        # if self.config.neptune:
+        #     for key in self.losses.keys():
+        #         neptune.send_metric(key, self.losses[key].item())
         if self.config.tensorboard and self.writer is not None:
             for key in self.losses.keys():
                 self.writer.add_scalar('train/'+key, self.losses[key], iter)

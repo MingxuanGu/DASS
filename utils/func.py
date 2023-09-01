@@ -45,7 +45,7 @@ def thres_cb_plabel(P, thres_dic, num_cls=19, label=None):
     vec = vec.view(1, c, 1, 1)
     vec = vec.expand_as(P)
     #mask = torch.gt(P, vec)
-    mask = torch.ge(P, vec)
+    mask = torch.ge(P, vec)  # greater or equals to (P >= vec)
     mask = mask.sum(dim=1).byte()
     ignore = 255 * torch.ones_like(pred_label, dtype=torch.long)
 

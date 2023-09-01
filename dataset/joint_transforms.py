@@ -402,12 +402,22 @@ class RandomRotate(object):
 class RandomSizeAndCrop(object):
     def __init__(self, size, crop_nopad,
                  scale_min=0.5, scale_max=2.0, ignore_index=0, pre_size=None, rec=False, centroid=None):
+        """
+        :param size:
+        :param crop_nopad:
+        :param scale_min:
+        :param scale_max:
+        :param ignore_index:
+        :param pre_size:
+        :param rec:
+        :return:
+        """
         self.rec= rec
         self.size = size
         if rec:
-            self.crop = RandomCropRec((self.size*2, self.size))
+            self.crop = RandomCropRec((self.size*2, self.size))  # crop a rectangle from the image
         else:
-            self.crop = RandomCrop(self.size, ignore_index=ignore_index, nopad=crop_nopad)
+            self.crop = RandomCrop(self.size, ignore_index=ignore_index, nopad=crop_nopad)  # crop a square
         self.scale_min = scale_min
         self.scale_max = scale_max
         self.pre_size = pre_size

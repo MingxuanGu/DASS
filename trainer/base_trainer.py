@@ -1,8 +1,7 @@
 import torch
 import os.path as osp
-import neptune
 import torch.nn as nn
-import neptune
+# import neptune
 from dataset import dataset
 from tqdm import tqdm
 import numpy as np
@@ -30,16 +29,16 @@ class BaseTrainer(object):
         def train(self):
             for i_iter in range(self.config.num_steps):
                 losses = self.iter(i_iter)
-                if i_iter==0 and self.config.neptune:
-                    neptune.init(project_qualified_name='leegeon30/segmentation-DA')
-                    neptune.create_experiment(params=self.config, name=self.config['note'])
+                # if i_iter==0 and self.config.neptune:
+                #     neptune.init(project_qualified_name='leegeon30/segmentation-DA')
+                #     neptune.create_experiment(params=self.config, name=self.config['note'])
                 if i_iter % self.config.print_freq ==0:
                     self.print_loss(i_iter)
                 if i_iter % self.config.save_freq ==0 and i_iter != 0:
                     self.save_model(i_iter)
                 if self.config.val and i_iter % self.config.val_freq ==0 and i_iter!=0:
                     self.validate()
-            neptune.stop()
+            # neptune.stop()
 
         def save_model(self, iter):
             tmp_name = '_'.join((self.config.source, str(iter))) + '.pth'
@@ -51,9 +50,9 @@ class BaseTrainer(object):
             loss_infor = '  '.join(to_print)
             if self.config.screen:
                 print(iter_infor +'  '+ loss_infor)
-            if self.config.neptune:
-                for key in self.losses.keys():
-                    neptune.send_metric(key, self.losses[key].item())
+            # if self.config.neptune:
+            #     for key in self.losses.keys():
+            #         neptune.send_metric(key, self.losses[key].item())
             if self.config.tensorboard and self.writer is not None:
                 for key in self.losses.keys():
                     self.writer.add_scalar('train/'+key, self.losses[key], iter)
@@ -106,9 +105,9 @@ class BaseTrainer(object):
                 mAcc = acc.mean().item()
                 iou = iou.cpu().numpy()
                 print('mIoU: {:.2%} mAcc : {:.2%} '.format(mIoU, mAcc))
-                if self.config.neptune:
-                    neptune.send_metric('mIoU', mIoU)
-                    neptune.send_metric('mAcc', mAcc)
+                # if self.config.neptune:
+                #     neptune.send_metric('mIoU', mIoU)
+                #     neptune.send_metric('mAcc', mAcc)
             return mIoU
 
 

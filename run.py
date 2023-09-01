@@ -21,8 +21,9 @@ def parse_args():
     parser = argparse.ArgumentParser(description='')
     parser.add_argument('--config', dest='config_file',
                         help='configuration filename',
-                        default=None, type=str)
+                        default='./config/damnet_config.yml', type=str)
     return parser.parse_args()
+
 
 def main():
     seed = 1234
