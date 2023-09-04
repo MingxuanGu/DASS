@@ -1,11 +1,11 @@
 import torch
 from utils.optimize import adjust_learning_rate
-from .base_trainer import BaseTrainer
+from trainer.base_trainer import BaseTrainer
 from utils.flatwhite import *
 from easydict import EasyDict as edict
 import os.path as osp
 from dataset import dataset
-import neptune
+# import neptune
 import math
 from PIL import Image
 from utils.meters import AverageMeter, GroupAverageMeter
@@ -426,3 +426,86 @@ class Trainer(BaseTrainer):
         if self.config.tensorboard and self.writer is not None:
             for key in self.losses.keys():
                 self.writer.add_scalar('train/'+key, self.losses[key], iter)
+
+
+if __name__ == '__main__':
+    def metric_loss(feature_s, label_s, feature_t, label_t):
+        _, ch, feature_s_h, feature_s_w = feature_s.size()
+        label_s_resize = F.interpolate(label_s.float().unsqueeze(0), size=(feature_s_h, feature_s_w))
+
+        _, _, feature_t_h, feature_t_w = feature_t.size()
+        label_t_resize = F.interpolate(label_t.float().unsqueeze(0), size=(feature_t_h, feature_t_w))
+
+        source_list = torch.unique(label_s_resize.float())
+        target_list = torch.unique(label_t_resize.float())
+
+        overlap_classes = []
+        for i, index in enumerate(torch.unique(label_s_resize)):
+            if index in torch.unique(label_t_resize) and index != 255.:
+                overlap_classes.append(index.detach())
+
+        source_prototypes = torch.zeros(size=(19, ch)).cuda()
+        for i, index in enumerate(source_list):
+            if index!=255.:
+                fg_mask_s = ((label_s_resize==index)*1).cuda().detach()
+                prototype_s = (fg_mask_s*feature_s).squeeze().resize(ch,feature_s_h*feature_s_w).sum(-1)/fg_mask_s.sum()
+                source_prototypes[int(index)] = prototype_s
+
+        cs_map = torch.matmul(F.normalize(source_prototypes, dim = 1), F.normalize(feature_t.squeeze().resize(ch,feature_t_h*feature_t_w), dim=0))
+        cs_map[cs_map==0] = -1
+        cosine_similarity_map = F.interpolate(cs_map.resize(1, 19,feature_t_h, feature_t_w), size=label_t.size()[-2:])
+        cosine_similarity_map *= 10
+
+        cross_entropy_weight = torch.zeros(size=(19,1))
+        for i, element in enumerate(overlap_classes):
+            cross_entropy_weight[int(element)] = 1
+
+        cross_entropy_weight = cross_entropy_weight.cuda()
+        prototype_loss = torch.nn.CrossEntropyLoss(weight= cross_entropy_weight, ignore_index=255)
+
+        prediction_by_cs = F.softmax(cosine_similarity_map, dim=1)
+        target_predicted = prediction_by_cs.argmax(dim=1)
+        confidence_of_target_predicted = prediction_by_cs.max(dim=1).values
+        confidence_mask  = (confidence_of_target_predicted>0.8)*1
+        target_predicted[target_predicted==0] = 20
+        masked_target_predicted = target_predicted * confidence_mask
+        masked_target_predicted[masked_target_predicted==0] = 255
+        masked_target_predicted[masked_target_predicted==20] = 0
+        masked_target_predicted_resize = F.interpolate(masked_target_predicted.float().unsqueeze(0), size=(feature_t_h, feature_t_w), mode='nearest')
+
+        label_t_resize_new = label_t_resize.clone().contiguous()
+        label_t_resize_new[label_t_resize_new==255] = masked_target_predicted_resize[label_t_resize_new==255]
+
+        target_list2 = torch.unique(label_t_resize_new)
+
+        overlap_classes2 = []
+        for i, index in enumerate(torch.unique(label_s_resize)):
+            if index in torch.unique(label_t_resize_new) and index != 255.:
+                overlap_classes2.append(index.detach())
+
+        target_prototypes = torch.zeros(size=(19, ch)).cuda()
+        for i, index in enumerate(target_list):
+            if index!=255.:
+                #fg_mask_t = ((label_t_resize_new==index)*1).cuda()
+                fg_mask_t = ((label_t_resize==index)*1).cuda().detach()
+                prototype_t = (fg_mask_t*feature_t).squeeze().resize(ch,feature_t_h*feature_t_w).sum(-1)/fg_mask_t.sum()
+                target_prototypes[int(index)] = prototype_t
+
+        cs_map2 = torch.matmul(F.normalize(target_prototypes, dim = 1), F.normalize(feature_s.squeeze().resize(ch,feature_s_h*feature_s_w), dim=0))
+        cs_map2[cs_map2==0] = -1
+        cosine_similarity_map2 = F.interpolate(cs_map2.resize(1, 19, feature_s_h, feature_s_w), size=label_s.size()[-2:])
+        cosine_similarity_map2 *= 10
+
+        prototype_loss2 = torch.nn.CrossEntropyLoss(ignore_index=255)
+
+        metric_loss1 = prototype_loss(cosine_similarity_map, label_t)
+        metric_loss2 = prototype_loss(cosine_similarity_map2, label_s)
+
+        metric_loss = self.config.lamb_metric1 * metric_loss1 + self.config.lamb_metric2 * metric_loss2
+        return metric_loss
+
+    feature_s = torch.randn(1, 19, 29, 29).cuda()
+    feature_t = torch.randn(1, 19, 29, 29).cuda()
+    label_s = torch.randn(1, 19, 29, 29).argmax(dim=1).cuda()
+    label_t = torch.randn(1, 19, 224, 224).argmax(dim=1).cuda()
+    metric_loss(feature_s, label_s, feature_t, label_t)

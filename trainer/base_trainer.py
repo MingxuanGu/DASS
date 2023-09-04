@@ -1,8 +1,7 @@
 import torch
 import os.path as osp
-import neptune
+# import neptune
 import torch.nn as nn
-import neptune
 from dataset import dataset
 from tqdm import tqdm
 import numpy as np
