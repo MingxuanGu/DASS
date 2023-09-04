@@ -45,7 +45,6 @@ def main():
 
     model = init_model(config)
 
-
     trainer = Trainer(model, config, writer)
 
     trainer.train()

@@ -17,6 +17,24 @@ class BaseDataSet(data.Dataset):
                  max_iters=None, ignore_label=255, set='val', plabel_path=None, max_prop=None, selected=None,
                  centroid=None,
                  wei_path=None):
+        """
+        The basic dataset for both source and target dataset
+        @param root: the root dictionary of the dataset
+        @param list_path: the list of samples to be used
+        @param dataset: the name of the dataset
+        @param num_class: not used
+        @param joint_transform: the instance of a transform that jointly transform the image and the label
+        @param transform: image transformer
+        @param label_transform: label transformer
+        @param max_iters: maximum number of iterations
+        @param ignore_label: not used
+        @param set: to indicate whether the dataset is for train/val/test (also changes the directory to read the data)
+        @param plabel_path: the path to the pseudolabel, if not specified, the true will be used
+        @param max_prop: the proportion of the data used for training. Conflict with max_iter.
+        @param selected: image_id seleted. If specified, only the selected samples will be loaded.
+        @param centroid: not used.
+        @param wei_path: not used
+        """
 
         self.root = root
         self.list_path = list_path

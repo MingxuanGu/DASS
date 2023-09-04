@@ -20,6 +20,8 @@ from utils.pool import Pool
 from utils.flatwhite import *
 from trainer.base_trainer import *
 
+from dataset.data_generator_mscmrseg import prepare_dataset
+
 
 class Trainer(BaseTrainer):
     def __init__(self, model, config, writer):
@@ -38,43 +40,73 @@ class Trainer(BaseTrainer):
         loss = -torch.sum(p * log_p, dim=1)
         return loss
 
-    def metric_loss(self, feature_s, label_s, feature_t, label_t):
+    def cosine_similarity(self, class_list, label_resize, feature, label2, feature2, num_class=19):
+        """
+        calculate the cosine similarity between centroid of one domain and individual features of another domain
+        @param class_list: the unique class index of the label
+        @param label_resize: (1, 1, h, w) the label of the first domain
+        @param feature: (1, C, h, w) the feature of the first domain
+        @param label2: (1, 1, H, W) the label of the second domain (full size)
+        @param feature2: (1, C, h, w) the feature of the second domain
+        @param num_class: the total number of classes
+        @return:
+        """
+        # get the shape of the feature
+        _, ch, feature_h, feature_w = feature.size()
+        prototypes = torch.zeros(size=(num_class, ch)).cuda()
+        for i, index in enumerate(class_list):
+            # enumerate over the class index in the class_list, class 255 is ignored
+            if index != 255.:
+                fg_mask = ((label_resize == index) * 1).cuda().detach()  # extract the mask for label == index
+                # mask out the features correspond to certain class index and calculate the masked average feature
+                prototype = (fg_mask * feature).squeeze().resize(ch, feature_h * feature_w).sum(
+                    -1) / fg_mask.sum()
+                prototypes[int(index)] = prototype  # (class_num, ch) register the prototypes into the list
+
+        # (class_num, feature_h * feature_w) the cosine similarity between each class in one domain and each
+        # individual feature in another domain
+        cs_map = torch.matmul(F.normalize(prototypes, dim=1),
+                              F.normalize(feature2.squeeze().resize(ch, feature_h * feature_w), dim=0))
+        # set the value to -1 (smallest in cosine value) when the class index does not overlap in both two domain
+        cs_map[cs_map == 0] = -1
+        # make sure that label and label2 have the same shape
+        cosine_similarity_map = F.interpolate(cs_map.resize(1, num_class, feature_h, feature_w), size=label2.size()[-2:])
+        cosine_similarity_map *= 10
+        return cosine_similarity_map
+
+    def metric_loss(self, feature_s, label_s, feature_t, label_t, num_class):
+        """
+        Calculate the contrastive loss between two features of different domains
+        @param feature_s:  1, C, h, w the source feature
+        @param label_s: 1, H, W the source (pseudo)label
+        @param feature_t: 1, C, h, w the target feature
+        @param label_t: 1, H, W the target (pseudo)label
+        @param num_class: the total number of classes
+        @return:
+        """
+
+        # interpolate(down-sample) the labels to have the same size as the features
         _, ch, feature_s_h, feature_s_w = feature_s.size()
-        label_s_resize = F.interpolate(label_s.float().unsqueeze(0), size=(feature_s_h, feature_s_w))
-
+        label_s_resize = F.interpolate(label_s.float().unsqueeze(0), size=(feature_s_h, feature_s_w))  # (1, 1, h, w)
         _, _, feature_t_h, feature_t_w = feature_t.size()
-        label_t_resize = F.interpolate(label_t.float().unsqueeze(0), size=(feature_t_h, feature_t_w))
+        label_t_resize = F.interpolate(label_t.float().unsqueeze(0), size=(feature_t_h, feature_t_w))  # (1, 1, h, w)
 
+        # get the unique class number for both source and target (pseudo)labels
         source_list = torch.unique(label_s_resize.float())
         target_list = torch.unique(label_t_resize.float())
 
-        overlap_classes = []
-        for i, index in enumerate(torch.unique(label_s_resize)):
-            if index in torch.unique(label_t_resize) and index != 255.:
-                overlap_classes.append(index.detach())
+        # find the overlapping class index except 255
+        overlap_classes = [int(index.detach()) for index in source_list if index in target_list and index != 255]
+        # calculate the similarity map
+        cosine_similarity_map = self.cosine_similarity(source_list, label_s_resize, feature_s, label_t, feature_t, num_class)
 
-        source_prototypes = torch.zeros(size=(19, ch)).cuda()
-        for i, index in enumerate(source_list):
-            if index != 255.:
-                fg_mask_s = ((label_s_resize == index) * 1).cuda().detach()
-                prototype_s = (fg_mask_s * feature_s).squeeze().resize(ch, feature_s_h * feature_s_w).sum(
-                    -1) / fg_mask_s.sum()
-                source_prototypes[int(index)] = prototype_s
-
-        cs_map = torch.matmul(F.normalize(source_prototypes, dim=1),
-                              F.normalize(feature_t.squeeze().resize(ch, feature_t_h * feature_t_w), dim=0))
-        cs_map[cs_map == 0] = -1
-        cosine_similarity_map = F.interpolate(cs_map.resize(1, 19, feature_t_h, feature_t_w), size=label_t.size()[-2:])
-        cosine_similarity_map *= 10
-
-        cross_entropy_weight = torch.zeros(size=(19, 1))
-        for i, element in enumerate(overlap_classes):
-            cross_entropy_weight[int(element)] = 1
-
+        cross_entropy_weight = torch.zeros(size=(num_class, 1))
+        cross_entropy_weight[overlap_classes] = 1
         cross_entropy_weight = cross_entropy_weight.cuda()
+        # generate the cross entropy loss where only the overlapping classes are taken into count
         prototype_loss = torch.nn.CrossEntropyLoss(weight=cross_entropy_weight, ignore_index=255)
 
-        prediction_by_cs = F.softmax(cosine_similarity_map, dim=1)
+        prediction_by_cs = F.softmax(cosine_similarity_map, dim=1)  # compute the softmax of the similarity map
         target_predicted = prediction_by_cs.argmax(dim=1)
         confidence_of_target_predicted = target_predicted.max(dim=1).values
         confidence_mask = (confidence_of_target_predicted > 0.8) * 1
@@ -111,8 +143,6 @@ class Trainer(BaseTrainer):
                                                size=label_s.size()[-2:])
         cosine_similarity_map2 *= 10
 
-        prototype_loss2 = torch.nn.CrossEntropyLoss(ignore_index=255)
-
         metric_loss1 = prototype_loss(cosine_similarity_map, label_t)
         metric_loss2 = prototype_loss(cosine_similarity_map2, label_s)
 
@@ -131,7 +161,7 @@ class Trainer(BaseTrainer):
         label_s = label_s.long().to(self.device)
         label_t = label_t.long().to(self.device)
 
-        label_s_0 = label_s[0, :, :].unsqueeze(0).contiguous()
+        label_s_0 = label_s[0, :, :].unsqueeze(0).contiguous()  # (1, H, W)
         label_s_1 = label_s[1, :, :].unsqueeze(0).contiguous()
         feature_s_0 = feature_s[0, :, :, :].unsqueeze(0).contiguous()
         feature_s_1 = feature_s[1, :, :, :].unsqueeze(0).contiguous()
@@ -148,8 +178,8 @@ class Trainer(BaseTrainer):
         loss_e = self.entropy_loss(pred_s).mean() + self.config.lambt * self.entropy_loss(pred_t).mean()
         loss_e = self.config.lamb * loss_e
 
-        loss_metric_0 = self.metric_loss(feature_s_0, label_s_0, feature_t_0, label_t_0)
-        loss_metric_1 = self.metric_loss(feature_s_1, label_s_1, feature_t_1, label_t_1)
+        loss_metric_0 = self.metric_loss(feature_s_0, label_s_0, feature_t_0, label_t_0, self.config.num_classes)
+        loss_metric_1 = self.metric_loss(feature_s_1, label_s_1, feature_t_1, label_t_1, self.config.num_classes)
         # loss_metric_2 = self.metric_loss(feature_s_0, label_s_0, feature_t_1, label_t_1)
         # loss_metric_3 = self.metric_loss(feature_s_1, label_s_1, feature_t_0, label_t_0)
         loss_metric = (loss_metric_0 + loss_metric_1) / 2
@@ -180,7 +210,7 @@ class Trainer(BaseTrainer):
         for r in range(self.round_start, self.config.round):
             self.model = self.model.train()
             # self.source_all = get_list(self.config.gta5.data_list)
-            self.target_all = get_list(self.config.cityscapes.data_list)  # [:50]
+            # self.target_all = get_list(self.config.cityscapes.data_list)  # [:50]
 
             # if r != 0:  # cb_prop=0.1; thres_inc=0 for all the configuration files
             self.cb_thres = self.gene_thres(
@@ -248,7 +278,7 @@ class Trainer(BaseTrainer):
                     (math.sqrt(2)) ** self.round_start
             )
 
-    def gene_thres(self, prop, num_cls=19):  # prop = 0.1
+    def gene_thres(self, prop, num_cls=19, args=None):  # prop = 0.1
         print('[Calculate Threshold using config.cb_prop]')  # r in section 3.3
 
         probs = {}  # store a dictionary for the probability prediction of each class
